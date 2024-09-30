@@ -76,24 +76,34 @@ fi
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -H|--header)
-            headerfilename="$2"
-            shift; shift ;;
-        -p|--prefix)
-            prefix="$2"
-            shift; shift ;;
-        -c|--countries)
-            countrieslist="$2"
-            shift; shift ;;
-        -P|--postfix)
-            postfix="$2"
-            shift; shift ;;
-        -v|--verbose)
-            verbose=1
-            shift ;;
-        *)
-            echo "Unknown option: $1"
-            exit 1 ;;
+    -H | --header)
+        headerfilename="$2"
+        shift
+        shift
+        ;;
+    -p | --prefix)
+        prefix="$2"
+        shift
+        shift
+        ;;
+    -c | --countries)
+        countrieslist="$2"
+        shift
+        shift
+        ;;
+    -P | --postfix)
+        postfix="$2"
+        shift
+        shift
+        ;;
+    -v | --verbose)
+        verbose=1
+        shift
+        ;;
+    *)
+        echo "Unknown option: $1"
+        exit 1
+        ;;
     esac
 done
 
@@ -132,7 +142,7 @@ processAddresses() {
             local cidr_bits=$(awk "BEGIN {cidr=32-log($num_hosts)/log(2); print int(cidr+(cidr-int(cidr)<0.5?0:1))}")
             echo "${prefix}${net}/${cidr_bits}${postfix}"
         fi
-    done < "$fn"
+    done <"$fn"
 }
 
 # Print header if specified
