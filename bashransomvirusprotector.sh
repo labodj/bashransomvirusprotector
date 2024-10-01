@@ -61,6 +61,7 @@ prefix=""
 postfix=""
 countrieslist=""
 
+# Check for required commands
 checkInstalledCommands() {
     local missing_commands=()
     for cmd in "$@"; do
@@ -76,13 +77,15 @@ checkInstalledCommands curl md5sum awk
 
 # Show usage if no arguments
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 [options]"
-    echo "Options:"
-    echo "  -H, --header       Header file name to prepend to output"
-    echo "  -p, --prefix       Prefix for each line of output"
-    echo "  -c, --countries    Country codes, comma-separated (e.g., 'RU,IT')"
-    echo "  -P, --postfix      Postfix for each line of output"
-    echo "  -v, --verbose      Enable verbose output"
+    cat <<EOF
+Usage: $0 [options]
+Options:
+  -H, --header       Header file name to prepend to output
+  -p, --prefix       Prefix for each line of output
+  -c, --countries    Country codes, comma-separated (e.g., 'RU,IT')
+  -P, --postfix      Postfix for each line of output
+  -v, --verbose      Enable verbose output
+EOF
     exit 1
 fi
 
@@ -124,36 +127,35 @@ fi
 
 # Function to download files
 download() {
-    curl -s "$1$2" -o "$2"
-    if [ $? -ne 0 ]; then
-        echo "Error downloading $2"
+    curl -s "$1$2" -o "$2" || {
+        echo "Error downloading $2 from $1$2"
         exit 1
-    fi
+    }
 }
 
 # Function to verify MD5
 verifyFileMd5() {
     local original_md5 computed_md5
     original_md5=$(awk '/MD5/ {print $NF}' "$2")
+    [ -z "$original_md5" ] && {
+        echo "MD5 not found in $2. Exiting."
+        exit 1
+    }
     computed_md5=$(md5sum "$1" | awk '{print $1}')
     if [ "$original_md5" == "$computed_md5" ]; then
         [ $verbose -eq 1 ] && echo "MD5 verified successfully."
-        return 0
     else
         echo "MD5 verification failed!"
-        return 1
+        exit 1
     fi
 }
 
 # Download and verify files
 download "$site" "$fn"
 download "$site" "$md5fn"
-if ! verifyFileMd5 "$fn" "$md5fn"; then
-    echo "MD5 verification failed for $fn. Exiting."
-    exit 1
-fi
+verifyFileMd5 "$fn" "$md5fn"
 
-# Function to calculate CIDR (fast)
+# Function to calculate CIDR
 calculate_cidr() {
     local num_hosts=$1
 
@@ -227,13 +229,13 @@ calculate_cidr() {
 # Process and print addresses
 processAddresses() {
     local -a country_codes
-    local line net num_hosts cidr_bits
     IFS=',' read -ra country_codes <<<"$countrieslist"
 
     while IFS='|' read -ra line; do
         if [[ "${line[2]}" == "ipv4" ]] && [[ " ${country_codes[*]} " == *" ${line[1]} "* ]]; then
-            net="${line[3]}"
-            num_hosts="${line[4]}"
+            local net="${line[3]}"
+            local num_hosts="${line[4]}"
+            local cidr_bits
             cidr_bits=$(calculate_cidr "$num_hosts")
             echo "${prefix}${net}/${cidr_bits}${postfix}"
         fi
@@ -241,8 +243,6 @@ processAddresses() {
 }
 
 # Print header if specified
-if [ -n "$headerfilename" ]; then
-    cat "$headerfilename"
-fi
+[ -n "$headerfilename" ] && cat "$headerfilename"
 
 processAddresses
