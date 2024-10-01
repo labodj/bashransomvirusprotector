@@ -61,6 +61,19 @@ prefix=""
 postfix=""
 countrieslist=""
 
+checkInstalledCommands() {
+    local missing_commands=()
+    for cmd in "$@"; do
+        command -v "$cmd" >/dev/null 2>&1 || missing_commands+=("$cmd")
+    done
+    if [ ${#missing_commands[@]} -ne 0 ]; then
+        echo "The following commands are required but not installed: ${missing_commands[*]}. Aborting."
+        exit 1
+    fi
+}
+
+checkInstalledCommands curl md5sum awk
+
 # Show usage if no arguments
 if [ $# -eq 0 ]; then
     echo "Usage: $0 [options]"
@@ -78,23 +91,19 @@ while [[ $# -gt 0 ]]; do
     case $1 in
     -H | --header)
         headerfilename="$2"
-        shift
-        shift
+        shift 2
         ;;
     -p | --prefix)
         prefix="$2"
-        shift
-        shift
+        shift 2
         ;;
     -c | --countries)
         countrieslist="$2"
-        shift
-        shift
+        shift 2
         ;;
     -P | --postfix)
         postfix="$2"
-        shift
-        shift
+        shift 2
         ;;
     -v | --verbose)
         verbose=1
@@ -107,14 +116,25 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Check if countrieslist is empty
+if [ -z "$countrieslist" ]; then
+    echo "No countries specified. Please provide country codes."
+    exit 1
+fi
+
 # Function to download files
 download() {
     curl -s "$1$2" -o "$2"
+    if [ $? -ne 0 ]; then
+        echo "Error downloading $2"
+        exit 1
+    fi
 }
 
 # Function to verify MD5
 verifyFileMd5() {
-    original_md5=$(grep -oP 'MD5 \(.*\) = \K[a-f0-9]+' "$2")
+    local original_md5 computed_md5
+    original_md5=$(awk '/MD5/ {print $NF}' "$2")
     computed_md5=$(md5sum "$1" | awk '{print $1}')
     if [ "$original_md5" == "$computed_md5" ]; then
         [ $verbose -eq 1 ] && echo "MD5 verified successfully."
@@ -129,17 +149,92 @@ verifyFileMd5() {
 download "$site" "$fn"
 download "$site" "$md5fn"
 if ! verifyFileMd5 "$fn" "$md5fn"; then
+    echo "MD5 verification failed for $fn. Exiting."
     exit 1
 fi
 
+# Function to calculate CIDR (fast)
+calculate_cidr() {
+    local num_hosts=$1
+
+    if [ "$num_hosts" -le 1 ]; then
+        echo 32
+    elif [ "$num_hosts" -le 2 ]; then
+        echo 31
+    elif [ "$num_hosts" -le 4 ]; then
+        echo 30
+    elif [ "$num_hosts" -le 8 ]; then
+        echo 29
+    elif [ "$num_hosts" -le 16 ]; then
+        echo 28
+    elif [ "$num_hosts" -le 32 ]; then
+        echo 27
+    elif [ "$num_hosts" -le 64 ]; then
+        echo 26
+    elif [ "$num_hosts" -le 128 ]; then
+        echo 25
+    elif [ "$num_hosts" -le 256 ]; then
+        echo 24
+    elif [ "$num_hosts" -le 512 ]; then
+        echo 23
+    elif [ "$num_hosts" -le 1024 ]; then
+        echo 22
+    elif [ "$num_hosts" -le 2048 ]; then
+        echo 21
+    elif [ "$num_hosts" -le 4096 ]; then
+        echo 20
+    elif [ "$num_hosts" -le 8192 ]; then
+        echo 19
+    elif [ "$num_hosts" -le 16384 ]; then
+        echo 18
+    elif [ "$num_hosts" -le 32768 ]; then
+        echo 17
+    elif [ "$num_hosts" -le 65536 ]; then
+        echo 16
+    elif [ "$num_hosts" -le 131072 ]; then
+        echo 15
+    elif [ "$num_hosts" -le 262144 ]; then
+        echo 14
+    elif [ "$num_hosts" -le 524288 ]; then
+        echo 13
+    elif [ "$num_hosts" -le 1048576 ]; then
+        echo 12
+    elif [ "$num_hosts" -le 2097152 ]; then
+        echo 11
+    elif [ "$num_hosts" -le 4194304 ]; then
+        echo 10
+    elif [ "$num_hosts" -le 8388608 ]; then
+        echo 9
+    elif [ "$num_hosts" -le 16777216 ]; then
+        echo 8
+    elif [ "$num_hosts" -le 33554432 ]; then
+        echo 7
+    elif [ "$num_hosts" -le 67108864 ]; then
+        echo 6
+    elif [ "$num_hosts" -le 134217728 ]; then
+        echo 5
+    elif [ "$num_hosts" -le 268435456 ]; then
+        echo 4
+    elif [ "$num_hosts" -le 536870912 ]; then
+        echo 3
+    elif [ "$num_hosts" -le 1073741824 ]; then
+        echo 2
+    else
+        echo 1
+    fi
+}
+
 # Process and print addresses
 processAddresses() {
-    local country_codes=(${countrieslist//,/ })
+    local -a country_codes
+    local line net num_hosts cidr_bits
+    IFS=',' read -ra country_codes <<<"$countrieslist"
+
     while IFS='|' read -ra line; do
-        if [[ "ipv4" == "${line[2]}" && " ${country_codes[*]} " =~ " ${line[1]} " ]]; then
-            local net="${line[3]}"
-            local num_hosts="${line[4]}"
-            local cidr_bits=$(awk "BEGIN {cidr=32-log($num_hosts)/log(2); print int(cidr+(cidr-int(cidr)<0.5?0:1))}")
+        if [[ "${line[2]}" == "ipv4" ]] && [[ " ${country_codes[*]} " == *" ${line[1]} "* ]]; then
+            net="${line[3]}"
+            num_hosts="${line[4]}"
+            cidr_bits=$(calculate_cidr "$num_hosts")
             echo "${prefix}${net}/${cidr_bits}${postfix}"
         fi
     done <"$fn"
