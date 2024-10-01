@@ -156,7 +156,7 @@ download "$site" "$md5fn"
 verifyFileMd5 "$fn" "$md5fn"
 
 # Function to calculate CIDR
-calculate_cidr() {
+calculateCidr() {
     local num_hosts=$1
 
     if [ "$num_hosts" -le 1 ]; then
@@ -236,7 +236,7 @@ processAddresses() {
             local net="${line[3]}"
             local num_hosts="${line[4]}"
             local cidr_bits
-            cidr_bits=$(calculate_cidr "$num_hosts")
+            cidr_bits=$(calculateCidr "$num_hosts")
             echo "${prefix}${net}/${cidr_bits}${postfix}"
         fi
     done <"$fn"
